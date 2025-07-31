@@ -25,24 +25,24 @@ def star_can_see_event(star_pos, star_vel, event_vector, event_time, now, durati
     max_years = 1000
     step_years = 0.5
     cos_threshold = np.cos(np.radians(0.6))  # ~0.6 degrees
-
     duration_seconds = duration_days * 86400
+    max_checks = int(max_years / step_years)  # e.g. 2000
 
-    for years in np.arange(0, max_years, step_years):
+    for i in range(max_checks):
+        years = i * step_years
         star_future_pos = star_pos + star_vel * years
         distance_ly = np.linalg.norm(star_future_pos)
 
+        # Light travel time in days
+        light_days = distance_ly * 365.25
+
+        max_days = (datetime.max - event_time).days
+        if light_days > max_days:
+            continue  # prevent overflow
         try:
-            # Time light needs to reach the star (guard against overflow)
-            max_days = (datetime.max - event_time).days
-            light_days = distance_ly * 365.25
-            if light_days > max_days:
-                continue  # Skip this star; light would arrive too far in the future
-
             light_travel_time = timedelta(days=light_days)
-
-        except:
-            return False, None, None
+        except OverflowError:
+            continue
 
         arrival_time = event_time + light_travel_time
 
@@ -51,15 +51,18 @@ def star_can_see_event(star_pos, star_vel, event_vector, event_time, now, durati
         elif (arrival_time - now).total_seconds() > duration_seconds:
             continue
 
+        # Direction from star to Earth
         vec_to_earth = -star_future_pos
         vec_to_earth /= np.linalg.norm(vec_to_earth)
 
         alignment = np.dot(vec_to_earth, event_vector)
+
         if alignment > cos_threshold:
             wait_time = arrival_time - now
             return True, wait_time, distance_ly
 
     return False, None, None
+
 
 def main():
     st.title("Which Stars Can See Your Earth Event?")
