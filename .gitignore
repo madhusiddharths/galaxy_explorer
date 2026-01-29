@@ -1,2 +1,18 @@
-../clustered_visibility_partition_hdbscan.parquet
-../clustered_visibility_partition_hdbscan.parquet
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.venv/
+env/
+venv/
+
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+
+# Project specific
+# keeping visible_stars_with_hipparcos_and_names.parquet as it is needed for the app
