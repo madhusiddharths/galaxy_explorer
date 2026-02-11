@@ -1,18 +1,48 @@
+# Data files
+*.parquet
+*.csv
+*.dat
+*.pdf
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-.ipynb_checkpoints/
-.venv/
+*.so
+.Python
 env/
 venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# macOS
-.DS_Store
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
 
-# IDEs
+# IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Project specific
-# keeping visible_stars_with_hipparcos_and_names.parquet as it is needed for the app
+# PySpark
+metastore_db/
+derby.log
+spark-warehouse/
+
