@@ -84,7 +84,10 @@ def plot_sky_map(df):
     else:
         norm_mag = (mag_max - df['phot_g_mean_mag']) / (mag_max - mag_min)
 
-    colors = [f'rgba({int(255 * c)}, {int(255 * c)}, {int(255 * c)}, 1)' for c in norm_mag]
+    # Convert normalized magnitude to grayscale value (min 60 to avoid black but increase contrast)
+    # 0.0 -> 60 (darker grey), 1.0 -> 255 (white)
+    grayscale = 60 + (norm_mag * 195)
+    colors = [f'rgba({int(g)}, {int(g)}, {int(g)}, 1)' for g in grayscale]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
