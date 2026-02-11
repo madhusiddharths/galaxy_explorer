@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 # Path setup
 input_dir = Path('/Volumes/One Touch/bigdata/data/gaia_visible_from_earth')
-output_file = Path("/Users/madhusiddharthsuthagar/Documents/bigdata/mac_gaia/gaia_visible_combined.parquet")
+output_file = Path("../stars/gaia_visible_combined.parquet")
 
 # List all Parquet files, excluding macOS metadata files like ._filename
 parquet_files = sorted(f for f in input_dir.glob("*.parquet") if not f.name.startswith("._"))

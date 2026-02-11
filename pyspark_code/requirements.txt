@@ -1,6 +1,0 @@
-streamlit
-plotly
-astropy
-polars
-numpy
-matplotlib

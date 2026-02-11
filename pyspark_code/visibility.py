@@ -9,7 +9,7 @@ collection = db["city_visibility"]
 
 # Gaia raw data and SSD cache
 GAIA_PATH = Path('/Volumes/One Touch/bigdata/data/gaia_partitioned')
-SSD_CACHE = Path("/Users/madhusiddharthsuthagar/Documents/bigdata/mac_gaia/stars")
+SSD_CACHE = Path("../stars")
 SSD_CACHE.mkdir(exist_ok=True)
 
 # Define cities and coordinates

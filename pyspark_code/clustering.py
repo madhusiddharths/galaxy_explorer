@@ -38,7 +38,7 @@ df_clustered = features.with_columns([
 ])
 
 # Save to Parquet
-output_file = Path("../clustered_visibility_partition_hdbscan.parquet")
+output_file = Path("../stars/clustered_visibility_partition_hdbscan.parquet")
 print(f"💾 Saving clustered data to {output_file}")
 df_clustered.write_parquet(output_file)
 

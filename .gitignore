@@ -1,5 +1,6 @@
 # Data files
 *.parquet
+!stars/visible_stars_with_hipparcos_and_names.parquet
 *.csv
 *.dat
 *.pdf
@@ -12,6 +13,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -45,4 +47,3 @@ wheels/
 metastore_db/
 derby.log
 spark-warehouse/
-

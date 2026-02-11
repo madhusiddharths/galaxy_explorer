@@ -12,7 +12,7 @@ from matplotlib import cm
 import os
 
 # Load once
-PARQUET_PATH = Path("visible_stars_with_hipparcos_and_names.parquet")
+PARQUET_PATH = Path("stars/visible_stars_with_hipparcos_and_names.parquet")
 
 st.title("🌌 Visible Stars Finder with Proper Motion")
 
