@@ -47,72 +47,89 @@ def main():
     # Camera / Focus Control
     st.sidebar.header("Focus Region")
     
-    # Defaults to Earth (0,0,0)
-    col1, col2, col3 = st.sidebar.columns(3)
-    cx = col1.number_input("X (ly)", value=0.0, step=100.0)
-    cy = col2.number_input("Y (ly)", value=0.0, step=100.0)
-    cz = col3.number_input("Z (ly)", value=0.0, step=100.0)
+    # Camera / Focus Control
+    st.sidebar.header("Focus Region")
     
-    # Radius Control: Synchronized Slider and Number Input
-    st.sidebar.subheader("Field of View")
+    # Range limit
+    RANGE_LIMIT = 2000.0 # Hard limit as requested
     
-    # Default radius
-    if 'focus_radius' not in st.session_state:
-        st.session_state.focus_radius = 2000.0
-
-    def update_radius_slider():
-        st.session_state.focus_radius = st.session_state.radius_slider
-
-    def update_radius_number():
-        st.session_state.focus_radius = st.session_state.radius_number
-
-    # Input Widgets
-    # We want max 5000 as requested
-    MAX_RADIUS = 5000.0
-    MIN_RADIUS = 10.0
-    
-    # Ensure session state is within bounds (in case it was set higher before)
-    if st.session_state.focus_radius > MAX_RADIUS:
-         st.session_state.focus_radius = MAX_RADIUS
-         
-    r_col1, r_col2 = st.sidebar.columns([0.4, 0.6])
-    
-    with r_col1:
-        radius_num = st.number_input(
-            "Radius (ly)", 
-            min_value=MIN_RADIUS, 
-            max_value=MAX_RADIUS, 
-            value=st.session_state.focus_radius, 
-            step=10.0,
-            key="radius_number",
-            on_change=update_radius_number,
-            label_visibility="collapsed" # Hide label to save space
-        )
+    # Helper for synchronized inputs
+    def make_axis_control(label_suffix, key_prefix, default_range):
+        st.sidebar.subheader(f"{label_suffix} Range (ly)")
+        c1, c2, c3 = st.sidebar.columns([0.3, 0.4, 0.3])
         
-    with r_col2:
-        radius_slider = st.slider(
-            "Radius Slider", 
-            min_value=MIN_RADIUS, 
-            max_value=MAX_RADIUS, 
-            value=st.session_state.focus_radius, 
-            step=10.0,
-            key="radius_slider",
-            on_change=update_radius_slider,
-            label_visibility="collapsed"
-        )
-    
-    # Use the session state value which is synced
-    focus_radius = st.session_state.focus_radius
+        min_key = f"{key_prefix}_min"
+        max_key = f"{key_prefix}_max"
+        slider_key = f"{key_prefix}_slider"
+        
+        # Initialize state if needed
+        if slider_key not in st.session_state:
+            st.session_state[slider_key] = default_range
+        
+        # Callbacks
+        def update_from_slider():
+            # State is already updated by slider
+            # Just ensure keys are synced if we needed to, but slider is master here
+            pass 
+            
+        def update_from_num():
+            # Get values from number inputs (which are already in state)
+            s = st.session_state[min_key]
+            e = st.session_state[max_key]
+            if s > e: s, e = e, s # Swap if inverted
+            # Clamp to range limit
+            s = max(-RANGE_LIMIT, min(RANGE_LIMIT, s))
+            e = max(-RANGE_LIMIT, min(RANGE_LIMIT, e))
+            st.session_state[slider_key] = (s, e)
 
-    # Load Data with Focus
-    # Note: caching in data_loader handles (max_stars, center, radius) as key.
-    with st.spinner(f"Loading stars around ({cx},{cy},{cz}) radius {focus_radius}ly..."):
-        # Increased star count significantly for better "Zoom" experience
+        # Get current values from slider state (master)
+        current_range = st.session_state[slider_key]
+        
+        # NOTE: We do NOT pass 'value' to slider if key is present and state is initialized
+        # Streamlit warns/errors if both are provided when key exists in session state
+        
+        with c1:
+            st.number_input(f"{label_suffix} Min", value=current_range[0], min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, step=100.0, key=min_key, on_change=update_from_num, label_visibility="collapsed")
+        with c2:
+            st.slider(f"{label_suffix} Slider", min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, key=slider_key, step=100.0, on_change=update_from_slider, label_visibility="collapsed")
+        with c3:
+            st.number_input(f"{label_suffix} Max", value=current_range[1], min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, step=100.0, key=max_key, on_change=update_from_num, label_visibility="collapsed")
+            
+        return st.session_state[slider_key]
+
+    x_range = make_axis_control("X", "x", (-2000.0, 2000.0))
+    y_range = make_axis_control("Y", "y", (-2000.0, 2000.0))
+    z_range = make_axis_control("Z", "z", (-2000.0, 2000.0))
+    
+    # Hybrid Logic: 
+    # If ranges are exactly default (-2000 to 2000), show "Original Sphere" (25k stars, brightest)
+    # Else, show "Custom Box" (2.5k stars, random)
+    
+    is_default_view = (
+        x_range == (-2000.0, 2000.0) and
+        y_range == (-2000.0, 2000.0) and
+        z_range == (-2000.0, 2000.0)
+    )
+    
+    if is_default_view:
+        load_msg = "Loading Earth view (2000ly radius, 25k brightest stars)..."
         df = data_loader.load_and_process_stars(
             max_stars=25000,
-            center=(cx, cy, cz),
-            radius=focus_radius
+            radius=2000.0
         )
+    else:
+        load_msg = f"Loading Custom Box ({x_range}, {y_range}, {z_range}) - 2.5k random stars..."
+        df = data_loader.load_and_process_stars(
+            max_stars=2500,
+            x_range=x_range,
+            y_range=y_range,
+            z_range=z_range,
+            radius=None
+        )
+
+    with st.spinner(load_msg):
+        # Result is already loaded above
+        pass
     
     # Visualize
     # Pass focus info purely for debug/UI feedback if needed, 

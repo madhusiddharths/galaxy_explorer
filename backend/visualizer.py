@@ -25,9 +25,10 @@ def render_universe(df, current_year):
             pl.col("x0").alias("real_x"),
             pl.col("y0").alias("real_y"),
             pl.col("z0").alias("real_z"),
+            pl.col("source_id")
         ])
         
-    pdf = df_view.select(["real_x", "real_y", "real_z", "phot_g_mean_mag", "distance_ly"]).to_pandas()
+    pdf = df_view.select(["real_x", "real_y", "real_z", "phot_g_mean_mag", "distance_ly", "source_id"]).to_pandas()
     
     # Plotly Visualization
     
@@ -69,7 +70,7 @@ def render_universe(df, current_year):
             line=dict(width=0),
             opacity=0.8
         ),
-        text=[f"Mag: {m:.2f}<br>Dist: {d:.1f} ly" for m, d in zip(pdf["phot_g_mean_mag"], pdf["distance_ly"])],
+        text=[f"ID: {sid}<br>Mag: {m:.2f}<br>Dist: {d:.1f} ly" for sid, m, d in zip(pdf["source_id"], pdf["phot_g_mean_mag"], pdf["distance_ly"])],
         hoverinfo='text',
         name='Stars'
     ))
