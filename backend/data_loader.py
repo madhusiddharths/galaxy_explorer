@@ -8,19 +8,12 @@ DATA_DIR = Path('/Volumes/One Touch/bigdata/data/gaia_ly')
 MAS_TO_RAD_YR = (np.pi / 180.0) / 3_600_000.0
 
 @st.cache_data(show_spinner="Scanning the cosmos...")
-def load_and_process_stars(max_stars=25000, x_range=(-2000, 2000), y_range=(-2000, 2000), z_range=(-2000, 2000), radius=None):
+def load_and_process_stars(min_dist=10, max_dist=17000, healpix=None, max_stars=25000):
     """
-    Load stars, filtering by a 3D rectangular region (ranges) OR by a spherical radius.
-    
-    If radius is provided:
-        - Filters by sphere center (0,0,0) and radius.
-        - Sorts by brightness (phot_g_mean_mag) and takes top max_stars.
-        - Used for the default "Earth View".
-        
-    If radius is None:
-        - Filters by x_range, y_range, z_range box.
-        - Randomly samples max_stars.
-        - Used for "Custom Focus" view.
+    Load stars filtering by distance range and Healpix sector.
+    min_dist, max_dist: Light Years
+    healpix: Integer 1-12 (Level 0 sector), or None for All.
+    max_stars: Limit on result size (random sample).
     """
     files = []
     
@@ -28,64 +21,59 @@ def load_and_process_stars(max_stars=25000, x_range=(-2000, 2000), y_range=(-200
         st.error(f"Data directory not found: {DATA_DIR}")
         return None
 
-    # Determine distance range for file filtering
-    min_dist_file = 0
-    max_dist_file = 0
+    # Filter files based on distance range
+    # Files are named bin_{start_dist}.parquet (e.g. bin_0.parquet, bin_100.parquet)
+    # Each bin covers [start_dist, start_dist + BIN_SIZE)
+    # We assume BIN_SIZE is roughly 100 based on file Naming (0, 100, 200...)
+    BIN_SIZE = 100 
     
-    if radius is not None:
-        # Spherical logic (centered at 0,0,0 as per updated request)
-        max_dist_file = radius
-    else:
-        # Box logic
-        corners_x = [x_range[0], x_range[1]]
-        corners_y = [y_range[0], y_range[1]]
-        corners_z = [z_range[0], z_range[1]]
-        
-        for x in corners_x:
-            for y in corners_y:
-                for z in corners_z:
-                    d = np.sqrt(x**2 + y**2 + z**2)
-                    if d > max_dist_file:
-                        max_dist_file = d
-
-    # Load compatible files
+    compatible_files = []
+    
+    # We can glob all and filter, or smarter if we know the naming convention fits.
+    # Let's simple glob and filter by name to be safe against missing files.
     for f in DATA_DIR.glob("bin_*.parquet"):
         try:
-            dist = int(f.name.split("_")[1].split(".")[0])
-            if dist > max_dist_file: 
-                continue
-            files.append((dist, f))
+            # Extract start distance of bin
+            bin_start = int(f.name.split("_")[1].split(".")[0])
+            bin_end = bin_start + BIN_SIZE
+            
+            # Check overlap with requested range [min_dist, max_dist]
+            # Overlap if: start1 < end2 AND start2 < end1
+            if bin_start < max_dist and min_dist < bin_end:
+                compatible_files.append((bin_start, f))
         except:
             continue
             
-    files.sort(key=lambda x: x[0])
+    compatible_files.sort(key=lambda x: x[0])
     
     lazy_frames = []
     
-    # Pre-calc filter bounds
-    if radius is None:
-        min_x, max_x = x_range
-        min_y, max_y = y_range
-        min_z, max_z = z_range
-    else:
-        # Optimization: use bounding box of sphere for initial filter
-        min_x, max_x = -radius, radius
-        min_y, max_y = -radius, radius
-        min_z, max_z = -radius, radius
-    
-    for _, fpath in files:
+    for _, fpath in compatible_files:
+        
         try:
            lf = pl.scan_parquet(fpath)
            
-           # Apply geometric filter (Box or BBox of Sphere)
+           # Apply filters
+           # Distance
            lf = lf.filter(
-               (pl.col("x") * pl.col("distance_ly") >= min_x) &
-               (pl.col("x") * pl.col("distance_ly") <= max_x) &
-               (pl.col("y") * pl.col("distance_ly") >= min_y) &
-               (pl.col("y") * pl.col("distance_ly") <= max_y) &
-               (pl.col("z") * pl.col("distance_ly") >= min_z) &
-               (pl.col("z") * pl.col("distance_ly") <= max_z)
+               (pl.col("distance_ly") >= min_dist) &
+               (pl.col("distance_ly") <= max_dist)
            )
+           
+           # Healpix
+           if healpix is not None:
+               # Input is 1-12 (Level 0). Column is healpix_2 (Level 2, Nside=4).
+               # Pixels per Level 0 pixel = 4^2 = 16.
+               # Level 0 pixel 'p0' (0-11) contains Level 2 pixels [p0*16, (p0+1)*16 - 1]
+               # User input is 1-based, so p0 = healpix - 1.
+               p0 = healpix - 1
+               min_hp2 = p0 * 16
+               max_hp2 = (p0 + 1) * 16 - 1
+               
+               lf = lf.filter(
+                   (pl.col("healpix_2") >= min_hp2) &
+                   (pl.col("healpix_2") <= max_hp2)
+               )
            
            lazy_frames.append(lf)
         except Exception as e:
@@ -120,24 +108,14 @@ def load_and_process_stars(max_stars=25000, x_range=(-2000, 2000), y_range=(-200
         
         combined_lf = combined_lf.filter(pl.col("phot_g_mean_mag").is_not_null())
         
-        # Apply strict spherical filter if needed
-        if radius is not None:
-             combined_lf = combined_lf.filter(
-                (pl.col("x0")**2 + pl.col("y0")**2 + pl.col("z0")**2) <= radius**2
-            )
+        # Collect results to memory to perform random sampling
+        df = combined_lf.collect()
         
-        # Sampling Strategy
-        if radius is not None:
-            # ORIGINAL BEHAVIOR: Sort by brightness
-            q = combined_lf.sort("phot_g_mean_mag").limit(max_stars)
-            return q.collect()
-        else:
-            # NEW BEHAVIOR: Random sample
-            # Collect to memory for uniform random sample
-            df = combined_lf.collect()
-            if len(df) > max_stars:
-                df = df.sample(n=max_stars, with_replacement=False, seed=42)
-            return df
+        if len(df) > max_stars:
+            # Random sampling as requested
+            df = df.sample(n=max_stars, with_replacement=False, seed=42)
+        
+        return df
         
     except Exception as e:
         st.error(f"Error processing data: {e}")

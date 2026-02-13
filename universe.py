@@ -41,95 +41,39 @@ def main():
     st.title("Universe Eye")
 
     # Time Slider
-    # Increased range and step size to make proper motion more visible
-    current_year = st.slider("Year", min_value=-500000, max_value=500000, value=2016, step=1000)
+    current_year = st.slider("Year", min_value=-100000, max_value=100000, value=2016, step=100)
 
-    # Camera / Focus Control
-    st.sidebar.header("Focus Region")
+    # Filter Controls
+    st.sidebar.header("Filters")
     
-    # Camera / Focus Control
-    st.sidebar.header("Focus Region")
-    
-    # Range limit
-    RANGE_LIMIT = 2000.0 # Hard limit as requested
-    
-    # Helper for synchronized inputs
-    def make_axis_control(label_suffix, key_prefix, default_range):
-        st.sidebar.subheader(f"{label_suffix} Range (ly)")
-        c1, c2, c3 = st.sidebar.columns([0.3, 0.4, 0.3])
-        
-        min_key = f"{key_prefix}_min"
-        max_key = f"{key_prefix}_max"
-        slider_key = f"{key_prefix}_slider"
-        
-        # Initialize state if needed
-        if slider_key not in st.session_state:
-            st.session_state[slider_key] = default_range
-        
-        # Callbacks
-        def update_from_slider():
-            # State is already updated by slider
-            # Just ensure keys are synced if we needed to, but slider is master here
-            pass 
-            
-        def update_from_num():
-            # Get values from number inputs (which are already in state)
-            s = st.session_state[min_key]
-            e = st.session_state[max_key]
-            if s > e: s, e = e, s # Swap if inverted
-            # Clamp to range limit
-            s = max(-RANGE_LIMIT, min(RANGE_LIMIT, s))
-            e = max(-RANGE_LIMIT, min(RANGE_LIMIT, e))
-            st.session_state[slider_key] = (s, e)
-
-        # Get current values from slider state (master)
-        current_range = st.session_state[slider_key]
-        
-        # NOTE: We do NOT pass 'value' to slider if key is present and state is initialized
-        # Streamlit warns/errors if both are provided when key exists in session state
-        
-        with c1:
-            st.number_input(f"{label_suffix} Min", value=current_range[0], min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, step=100.0, key=min_key, on_change=update_from_num, label_visibility="collapsed")
-        with c2:
-            st.slider(f"{label_suffix} Slider", min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, key=slider_key, step=100.0, on_change=update_from_slider, label_visibility="collapsed")
-        with c3:
-            st.number_input(f"{label_suffix} Max", value=current_range[1], min_value=-RANGE_LIMIT, max_value=RANGE_LIMIT, step=100.0, key=max_key, on_change=update_from_num, label_visibility="collapsed")
-            
-        return st.session_state[slider_key]
-
-    x_range = make_axis_control("X", "x", (-2000.0, 2000.0))
-    y_range = make_axis_control("Y", "y", (-2000.0, 2000.0))
-    z_range = make_axis_control("Z", "z", (-2000.0, 2000.0))
-    
-    # Hybrid Logic: 
-    # If ranges are exactly default (-2000 to 2000), show "Original Sphere" (25k stars, brightest)
-    # Else, show "Custom Box" (2.5k stars, random)
-    
-    is_default_view = (
-        x_range == (-2000.0, 2000.0) and
-        y_range == (-2000.0, 2000.0) and
-        z_range == (-2000.0, 2000.0)
+    # Distance Range
+    dist_range = st.sidebar.slider(
+        "Distance Range (ly)",
+        min_value=10.0,
+        max_value=17000.0,
+        value=(10.0, 400.0),
+        step=10.0
     )
     
-    if is_default_view:
-        load_msg = "Loading Earth view (2000ly radius, 25k brightest stars)..."
+    # Healpix Sector
+    region_options = ["All"] + list(range(1, 13))
+    selected_region = st.sidebar.selectbox("Healpix Sector (1-12)", region_options)
+    
+    healpix_arg = None
+    max_stars_arg = 25000 # Default for 'All'
+    
+    if selected_region != "All":
+        healpix_arg = int(selected_region)
+        max_stars_arg = 1000 # Reduced for single sector as requested
+    
+    # Load Data
+    with st.spinner(f"Loading stars (Dist: {dist_range}, Sector: {selected_region})..."):
         df = data_loader.load_and_process_stars(
-            max_stars=25000,
-            radius=2000.0
+            min_dist=dist_range[0],
+            max_dist=dist_range[1],
+            healpix=healpix_arg,
+            max_stars=max_stars_arg
         )
-    else:
-        load_msg = f"Loading Custom Box ({x_range}, {y_range}, {z_range}) - 2.5k random stars..."
-        df = data_loader.load_and_process_stars(
-            max_stars=2500,
-            x_range=x_range,
-            y_range=y_range,
-            z_range=z_range,
-            radius=None
-        )
-
-    with st.spinner(load_msg):
-        # Result is already loaded above
-        pass
     
     # Visualize
     # Pass focus info purely for debug/UI feedback if needed, 
