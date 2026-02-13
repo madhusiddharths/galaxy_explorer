@@ -47,3 +47,8 @@ wheels/
 metastore_db/
 derby.log
 spark-warehouse/
+
+# Environment Variables
+.env
+api/.env
+web/.env
