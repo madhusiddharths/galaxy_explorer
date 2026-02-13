@@ -12,9 +12,32 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize BigQuery Client
-# Assumes GOOGLE_APPLICATION_CREDENTIALS or default auth is set
+# Assumes GOOGLE_APPLICATION_CREDENTIALS, default auth, or GOOGLE_CREDENTIALS_JSON is set
+import tempfile
+import json
+
 try:
-    client = bigquery.Client()
+    if os.getenv("GOOGLE_CREDENTIALS_JSON"):
+        # Load credentials from JSON string (Environment Variable)
+        # Writes to a temp file so standard Google Auth libraries can digest it
+        # This supports both Service Account keys AND User Credentials (application_default_credentials.json)
+        creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+        
+        # Verify it's valid JSON
+        json.loads(creds_json)
+        
+        # Create temp file
+        # We don't delete immediately so the client can read it. 
+        # In a container, /tmp is ephemeral anyway.
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp:
+            temp.write(creds_json)
+            temp_path = temp.name
+            
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
+        client = bigquery.Client()
+    else:
+        # Fallback to standard Application Default Credentials (file path)
+        client = bigquery.Client()
 except Exception as e:
     logger.error(f"Failed to initialize BigQuery client: {e}")
     client = None
@@ -50,11 +73,17 @@ async def query_stars(
     delta_t = year - 2016.0
     
     # Determine source table
-    if GCS_URI:
-        # Use ephemeral table name
-        query_table = "gcs_stars"
+    # We now strictly use the persistent BigQuery table created by the user
+    # Table ID should be fully qualified if not in default dataset, but here we use the env var
+    
+    # Construct fully qualified name if simple name is provided
+    if "." not in TABLE_ID:
+        # Assume it's just the table name, append project and dataset
+        project_id = os.getenv("BIGQUERY_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT"))
+        dataset_id = os.getenv("BIGQUERY_DATASET", "gaia_ly")
+        query_table = f"`{project_id}.{dataset_id}.{TABLE_ID}`"
+        logger.info(f"Constructed fully qualified table ID: {query_table}")
     else:
-        # Use persistent table
         query_table = f"`{TABLE_ID}`"
 
     query = f"""
@@ -91,12 +120,7 @@ async def query_stars(
     
     job_config = bigquery.QueryJobConfig(query_parameters=params)
     
-    # Configure Ephemeral Table if GCS_URI is set
-    if GCS_URI:
-        external_config = bigquery.ExternalConfig("PARQUET")
-        external_config.source_uris = [GCS_URI]
-        external_config.autodetect = True
-        job_config.table_definitions = {query_table: external_config}
+    # Ephemeral Table logic removed - using persistent table
     
     try:
         query_job = client.query(query, job_config=job_config)

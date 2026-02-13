@@ -13,7 +13,7 @@ function App() {
   const fetchStars = useCallback(async (params) => {
     setLoading(true)
     try {
-      const response = await axios.post('http://localhost:8000/stars', params)
+      const response = await axios.post('/stars', params)
       setStars(response.data.stars)
       setCount(response.data.count)
     } catch (error) {

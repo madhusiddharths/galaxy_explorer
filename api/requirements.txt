@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+google-cloud-bigquery
+google-cloud-storage
+pydantic
+db-dtypes
+pandas
+numpy
+gunicorn

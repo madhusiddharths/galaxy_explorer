@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Tuple, Optional
+import os
 from . import db
 
 app = FastAPI(title="Universe API")
@@ -95,3 +98,24 @@ async def get_stars(query: StarQuery):
     )
         
     return {"count": len(stars), "stars": stars}
+
+# Serve React Frontend (SPA)
+# Mount static files (JS, CSS, images)
+# Check if static directory exists (for local dev vs prod)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Allow API routes to pass through if not matched above (FastAPI handles order)
+        # But since this is a catch-all, we need to be careful.
+        # Actually, FastAPI matches specific routes first.
+        # So we just serve index.html for anything not caught.
+        
+        # Check if file exists in static (e.g. vite.svg)
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        return FileResponse(os.path.join(static_dir, "index.html"))
