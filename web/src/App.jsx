@@ -1,39 +1,33 @@
-import { useState, useEffect, useCallback } from 'react'
-import axios from 'axios'
-import Universe from './components/Universe'
-import Controls from './components/Controls'
+import { useState } from 'react'
+import Structure from './pages/Structure'
+import Families from './pages/Families'
 import './App.css'
 
-function App() {
-  const [stars, setStars] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [count, setCount] = useState(0)
+const TABS = [
+  { id: 'structure', label: 'Structure' },
+  { id: 'families', label: 'Families' },
+]
 
-
-  const fetchStars = useCallback(async (params) => {
-    setLoading(true)
-    try {
-      const response = await axios.post('/stars', params)
-      setStars(response.data.stars)
-      setCount(response.data.count)
-    } catch (error) {
-      console.error("Failed to fetch stars:", error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
+export default function App() {
+  const [page, setPage] = useState('structure')
   return (
-    <>
-      <div style={{ position: 'absolute', top: 20, left: 20, color: 'white', zIndex: 10, pointerEvents: 'none' }}>
-        <h1>Galaxy Explorer</h1>
-        <p>{loading ? "Loading..." : `${count} Stars Loaded`}</p>
+    <div className="app">
+      <div className="nav">
+        <div className="brand">
+          Galaxy Explorer <span className="sub">· Gaia DR3 · 557M stars</span>
+        </div>
+        <div className="tabs">
+          {TABS.map((t) => (
+            <button key={t.id}
+                    className={`tab ${page === t.id ? 'active' : ''}`}
+                    onClick={() => setPage(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Controls onUpdate={fetchStars} />
-      <Universe stars={stars} />
-    </>
+      {page === 'structure' ? <Structure /> : <Families />}
+    </div>
   )
 }
-
-export default App

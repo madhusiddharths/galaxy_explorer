@@ -2,8 +2,12 @@
 *.parquet
 !stars/visible_stars_with_hipparcos_and_names.parquet
 *.csv
+!stars/hyg_bright.csv
 *.dat
 *.pdf
+
+# Planetarium overlay assets (small, needed at deploy) stay tracked:
+# stars/constellation_lines.json, constellation_names.json, milkyway.json
 
 # Python
 __pycache__/
@@ -52,3 +56,7 @@ spark-warehouse/
 .env
 api/.env
 web/.env
+
+# Build output
+web/dist/
+api/static/

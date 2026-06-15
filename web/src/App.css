@@ -1,42 +1,45 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+.app { position: fixed; inset: 0; }
+
+/* Top navigation */
+.nav {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; gap: 18px;
+  padding: 12px 20px;
+  background: linear-gradient(180deg, rgba(5,6,13,0.9), rgba(5,6,13,0));
+  pointer-events: none;
+}
+.nav .brand { font-weight: 700; letter-spacing: 0.3px; pointer-events: auto; }
+.nav .brand .sub { color: var(--muted); font-weight: 400; font-size: 0.78rem; }
+.nav .tabs { display: flex; gap: 8px; pointer-events: auto; }
+.nav .tab {
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 6px 14px; border-radius: 999px; font-size: 0.9rem;
+}
+.nav .tab.active { color: var(--text); border-color: var(--border); background: var(--panel); }
+
+/* Floating cards */
+.card { position: absolute; z-index: 15; padding: 14px 16px; max-width: 320px; }
+.card h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.card .row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.82rem; }
+.card label { display: block; font-size: 0.78rem; color: var(--muted); margin: 10px 0 2px; }
+
+.controls { top: 64px; left: 20px; width: 280px; }
+.legend  { bottom: 20px; left: 20px; }
+.readout { top: 64px; right: 20px; text-align: right; }
+
+.muted { color: var(--muted); }
+.loading {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 25; color: var(--muted); font-size: 0.85rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+/* Cluster list */
+.clist { bottom: 20px; right: 20px; max-height: 46vh; overflow-y: auto; width: 270px; }
+.clist .item {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border-radius: 6px; cursor: pointer; font-size: 0.84rem;
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
+.clist .item:hover { background: rgba(255,255,255,0.05); }
+.clist .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
+canvas.hr { display: block; border-radius: 8px; }

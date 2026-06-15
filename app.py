@@ -1,204 +1,237 @@
-import streamlit as st
+"""
+Night Sky Viewer — a scientifically accurate, interactive planetarium.
+
+Shows the real sky from your location at any moment: a dome (stereographic)
+projection with true star colours, constellations, the Sun/Moon/planets, the
+Milky Way and day/night twilight. Drag the time slider to watch the sky turn.
+
+Star field: your processed Gaia DR3 visible-star catalogue (mag <= 6.5).
+Overlays:   HYG database (names), d3-celestial (constellation lines, Milky Way).
+"""
+from __future__ import annotations
+
 from datetime import datetime
-from zoneinfo import ZoneInfo
-import plotly.graph_objs as go
 from pathlib import Path
-import polars as pl
+from zoneinfo import ZoneInfo
+
+import streamlit as st
 from astropy.time import Time
-from astropy.coordinates import EarthLocation, SkyCoord, AltAz
-import astropy.units as u
-import numpy as np
-from matplotlib import cm
-import os
 
-# Load once
-PARQUET_PATH = Path("stars/visible_stars_with_hipparcos_and_names.parquet")
+from skyview import catalog, ephem, render
 
-st.title("🌌 Visible Stars Finder with Proper Motion")
+STARS = Path(__file__).resolve().parent / "stars"
 
-st.markdown("This tool shows stars currently visible to the naked eye from your location.")
+st.set_page_config(layout="wide", page_title="Night Sky Viewer", page_icon="🌌")
 
-# --- Default Location: Chicago ---
-default_lat = 41.83310031992272
-default_lon = -87.62416090340078
+CITY_PRESETS = {
+    "Custom / GPS": None,
+    "Chicago": (41.8331, -87.6242, "America/Chicago"),
+    "New York": (40.7128, -74.0060, "America/New_York"),
+    "Los Angeles": (34.0522, -118.2437, "America/Los_Angeles"),
+    "London": (51.5074, -0.1278, "Europe/London"),
+    "Reykjavík": (64.1466, -21.9426, "Atlantic/Reykjavik"),
+    "Delhi": (28.6139, 77.2090, "Asia/Kolkata"),
+    "Tokyo": (35.6895, 139.6917, "Asia/Tokyo"),
+    "Sydney": (-33.8688, 151.2093, "Australia/Sydney"),
+    "Atacama (Chile)": (-24.6272, -70.4042, "America/Santiago"),
+}
 
-# Timezone dropdown options
-timezone_options = [
-    "Now (System Time)",
-    "UTC",
-    "America/Chicago",
-    "America/New_York",
-    "America/Los_Angeles",
-    "Europe/London",
-    "Asia/Kolkata",
-    "Asia/Tokyo",
-]
+COMMON_TZS = ["UTC", "America/Chicago", "America/New_York", "America/Los_Angeles",
+              "Europe/London", "Europe/Berlin", "Asia/Kolkata", "Asia/Tokyo",
+              "Australia/Sydney", "America/Santiago"]
 
-# --- User Inputs ---
-if "lat" not in st.session_state:
-    st.session_state.lat = default_lat
-if "lon" not in st.session_state:
-    st.session_state.lon = default_lon
 
-lat = st.number_input("Latitude", value=st.session_state.lat, format="%.6f", key="lat_input")
-lon = st.number_input("Longitude", value=st.session_state.lon, format="%.6f", key="lon_input")
-timezone = st.selectbox("Select Timezone", timezone_options, index=timezone_options.index("America/Chicago"))
-# Brightness filter
-gmag_cutoff = st.slider("Select brightness cutoff (G magnitude)", min_value=0.0, max_value=6.5, value=5.0, step=0.1)
+# --------------------------------------------------------------------------- #
+# Data / init (cached)
+# --------------------------------------------------------------------------- #
+@st.cache_resource
+def _warm_astropy() -> bool:
+    ephem.warm_up()
+    return True
 
-# Time selection
-if timezone == "Now (System Time)":
-    local_time = datetime.now().astimezone()
-else:
-    if "date_input" not in st.session_state:
-        st.session_state.date_input = datetime.now().date()
 
-    date = st.date_input("Pick a date", value=st.session_state.date_input, key="date_input")
-    # Initialize only once
-    if "time_input" not in st.session_state:
-        st.session_state.time_input = datetime.now().time()
-
-    # Widget with persistent key
-    time_input = st.time_input("Pick a time", value=st.session_state.time_input, key="time_input")
-    local_time = datetime.combine(date, time_input).replace(tzinfo=ZoneInfo(timezone))
-
-utc_time = local_time.astimezone(ZoneInfo("UTC"))
-jyear = Time(utc_time).jyear
-delta_years = jyear - 2016.0
-
-st.markdown("---")
-st.subheader("📍 Observation Info")
-st.write(f"**Latitude:** {lat}")
-st.write(f"**Longitude:** {lon}")
-st.write(f"**Local Time:** {local_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-st.write(f"**UTC Time:** {utc_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-st.write(f"**Years since J2016.0:** {delta_years:.3f}")
-
-# --- Plotting function ---
-def plot_sky_map(df):
-    fixed_size = 5
-    mag_max = df['phot_g_mean_mag'].max()
-    mag_min = df['phot_g_mean_mag'].min()
-    if mag_max == mag_min:
-        norm_mag = np.ones(len(df))
-    else:
-        norm_mag = (mag_max - df['phot_g_mean_mag']) / (mag_max - mag_min)
-
-    # Convert normalized magnitude to grayscale value (min 60 to avoid black but increase contrast)
-    # 0.0 -> 60 (darker grey), 1.0 -> 255 (white)
-    grayscale = 60 + (norm_mag * 195)
-    colors = [f'rgba({int(g)}, {int(g)}, {int(g)}, 1)' for g in grayscale]
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['azimuth_deg'],
-        y=df['altitude_deg'],
-        mode='markers',
-        marker=dict(size=fixed_size, color=colors, symbol='star', line=dict(width=0), opacity=1),
-        text=[f"Mag: {mag:.2f}, Source ID: {sid}" for mag, sid in zip(df['phot_g_mean_mag'], df['source_id'])],
-        hoverinfo='text+x+y'
-    ))
-
-    fig.update_layout(
-        title='Sky Map: Altitude vs Azimuth',
-        xaxis=dict(
-            title='Azimuth (degrees)',
-            range=[0, 360],   # fixed from 0 to 360
-            dtick=30,
-            showgrid=False
-        ),
-        yaxis=dict(
-            title='Altitude (degrees)',
-            range=[0, 90],    # fixed from 0 to 90
-            showgrid=False
-        ),
-        height=600,
-        width=800,
-        template='plotly_dark'
+@st.cache_data(show_spinner="Loading star catalogue & sky overlays…")
+def load_everything():
+    cat = catalog.load_catalog(
+        STARS / "visible_stars_with_hipparcos_and_names.parquet",
+        STARS / "hyg_bright.csv",
     )
+    lines = catalog.load_constellation_lines(STARS / "constellation_lines.json")
+    labels = catalog.load_constellation_labels(STARS / "constellation_names.json")
+    mw = catalog.load_milkyway(STARS / "milkyway.json")
+    return cat, lines, labels, mw
 
-    fig.update_xaxes(ticks='outside')
-    fig.update_yaxes(ticks='outside')
 
-    return fig
+try:
+    from streamlit_js_eval import get_geolocation
+except Exception:  # noqa: BLE001
+    get_geolocation = None
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:  # noqa: BLE001
+    st_autorefresh = None
 
 
-# --- AltAz calculation with proper motion ---
-def calculate_altaz(df, lat, lon, time_utc):
-    ra = df["ra"].to_numpy()
-    dec = df["dec"].to_numpy()
-    pmra = df["pmra"].to_numpy()  # mas/yr
-    pmdec = df["pmdec"].to_numpy()  # mas/yr
+# --------------------------------------------------------------------------- #
+# Sidebar — controls
+# --------------------------------------------------------------------------- #
+def sidebar():
+    with st.spinner("Warming up astronomy engine…"):
+        _warm_astropy()
 
-    ra_corr = ra + (pmra / 3_600_000.0) * delta_years  # mas → deg
-    dec_corr = dec + (pmdec / 3_600_000.0) * delta_years
+    st.sidebar.title("🌌 Night Sky Viewer")
 
-    coords = SkyCoord(ra=ra_corr * u.deg, dec=dec_corr * u.deg)
+    # ---- Location ----
+    st.sidebar.header("📍 Location")
+    if "lat" not in st.session_state:
+        st.session_state.lat, st.session_state.lon = 41.8331, -87.6242
+        st.session_state.tz = "America/Chicago"
 
-    obs_time = Time(time_utc.replace(tzinfo=None), format="datetime")
+    city = st.sidebar.selectbox("City preset", list(CITY_PRESETS), index=1)
+    if CITY_PRESETS[city] is not None:
+        clat, clon, ctz = CITY_PRESETS[city]
+        if st.session_state.get("_city") != city:
+            st.session_state.lat, st.session_state.lon, st.session_state.tz = clat, clon, ctz
+            st.session_state._city = city
 
-    location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
-    altaz = AltAz(obstime=obs_time, location=location)
+    if get_geolocation is not None:
+        if st.sidebar.button("Use my location (GPS)", width="stretch"):
+            loc = get_geolocation()
+            if loc and loc.get("coords"):
+                st.session_state.lat = round(loc["coords"]["latitude"], 5)
+                st.session_state.lon = round(loc["coords"]["longitude"], 5)
+                st.rerun()
+    else:
+        st.sidebar.caption("Install `streamlit-js-eval` for one-tap GPS.")
 
-    star_altaz = coords.transform_to(altaz)
+    lat = st.sidebar.number_input("Latitude", -90.0, 90.0,
+                                  value=float(st.session_state.lat), format="%.5f")
+    lon = st.sidebar.number_input("Longitude", -180.0, 180.0,
+                                  value=float(st.session_state.lon), format="%.5f")
+    st.session_state.lat, st.session_state.lon = lat, lon
 
-    return star_altaz.alt.deg, star_altaz.az.deg
+    # ---- Time ----
+    st.sidebar.header("🕐 Time")
+    tz_opts = ["System (auto)"] + COMMON_TZS
+    default_tz = st.session_state.get("tz", "America/Chicago")
+    idx = tz_opts.index(default_tz) if default_tz in tz_opts else 0
+    tz_choice = st.sidebar.selectbox("Time zone", tz_opts, index=idx)
+    tz = (datetime.now().astimezone().tzinfo if tz_choice == "System (auto)"
+          else ZoneInfo(tz_choice))
 
-# Initialize session state variable for visible stars DataFrame
-if "visible_stars" not in st.session_state:
-    st.session_state.visible_stars = None
+    now_local = datetime.now(tz)
+    the_date = st.sidebar.date_input("Date", value=now_local.date())
 
-# --- Find Stars Button ---
-# --- Find Stars Button ---
-if st.button("🔭 Find Visible Stars"):
-    try:
-        df = pl.read_parquet(PARQUET_PATH)
-        df = df.filter(pl.col("phot_g_mean_mag") <= gmag_cutoff)
+    if "tod" not in st.session_state:
+        st.session_state.tod = now_local.hour + now_local.minute / 60.0
 
-        altitudes, azimuths = calculate_altaz(df, lat, lon, utc_time)
-        df = df.with_columns([
-            pl.Series("altitude_deg", altitudes),
-            pl.Series("azimuth_deg", azimuths)
-        ])
-        visible = df.filter(pl.col("altitude_deg") > 0)
+    playing = st.sidebar.toggle("▶ Play (time-lapse)", value=False,
+                                help="Auto-advance time to watch the sky rotate.")
+    speed = st.sidebar.select_slider("Speed (sky-hours / sec)", [0.25, 0.5, 1, 2, 4, 8],
+                                     value=2) if playing else 0
 
-        # Convert to pandas for display
-        visible_df = visible.to_pandas()
-        if "star_name" not in visible_df.columns:
-            visible_df["star_name"] = "None"
-        else:
-            visible_df["star_name"] = visible_df["star_name"].fillna("None")
+    if playing and st_autorefresh is not None:
+        st_autorefresh(interval=200, key="play_tick")
+        st.session_state.tod = (st.session_state.tod + speed * 0.2) % 24.0
+    elif playing:
+        st.sidebar.caption("Install `streamlit-autorefresh` to enable Play.")
 
-        if "famous_star_name" not in visible_df.columns:
-            visible_df["famous_star_name"] = "None"
-        else:
-            visible_df["famous_star_name"] = visible_df["famous_star_name"].fillna("None")
+    tod = st.sidebar.slider("Time of day (hours) — drag to scrub", 0.0, 24.0,
+                            value=float(st.session_state.tod), step=0.05)
+    if not playing:
+        st.session_state.tod = tod
 
-        st.session_state.visible_stars = visible_df  # store full pd.DataFrame
+    c1, c2, c3 = st.sidebar.columns(3)
+    if c1.button("−1h", width="stretch"):
+        st.session_state.tod = (st.session_state.tod - 1) % 24; st.rerun()
+    if c2.button("Now", width="stretch"):
+        st.session_state.tod = now_local.hour + now_local.minute / 60.0; st.rerun()
+    if c3.button("+1h", width="stretch"):
+        st.session_state.tod = (st.session_state.tod + 1) % 24; st.rerun()
 
-        st.success(f"✅ {len(visible_df)} stars are visible above the horizon.")
+    hh = int(st.session_state.tod)
+    mm = int(round((st.session_state.tod - hh) * 60)) % 60
+    local_dt = datetime(the_date.year, the_date.month, the_date.day, hh, mm, tzinfo=tz)
 
-        st.dataframe(
-            visible_df[
-                [
-                    "phot_g_mean_mag",
-                    "source_id",
-                    "star_name",
-                    "famous_star_name",
-                    "altitude_deg",
-                    "azimuth_deg",
-                    "ra",
-                    "dec",
-                    "parallax",
-                    "pmra",
-                    "pmdec",
-                ]
-            ].head(10)
-        )
+    # ---- View ----
+    st.sidebar.header("🔭 View")
+    mag_limit = st.sidebar.slider("Faintest magnitude shown", 1.0, 6.5, 6.0, 0.1,
+                                  help="Higher = fainter stars included.")
+    projection = st.sidebar.selectbox("Projection",
+                                      ["Stereographic (shapes true)", "Equidistant"], index=0)
+    projection = "stereographic" if projection.startswith("Stereo") else "equidistant"
 
-        # Use the plot_sky_map function to generate figure with dynamic axis ranges
-        fig = plot_sky_map(visible_df)
-        st.plotly_chart(fig, use_container_width=True)
+    st.sidebar.caption("Layers")
+    opts = dict(
+        show_constellations=st.sidebar.checkbox("Constellations", True),
+        show_names=st.sidebar.checkbox("Star names", True),
+        show_planets=st.sidebar.checkbox("Sun · Moon · planets", True),
+        show_milkyway=st.sidebar.checkbox("Milky Way", True),
+        show_grid=st.sidebar.checkbox("Alt/Az grid", True),
+        show_ground=True,
+    )
+    return local_dt, lat, lon, mag_limit, projection, opts, playing
 
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
+
+# --------------------------------------------------------------------------- #
+# Main
+# --------------------------------------------------------------------------- #
+def main():
+    cat, lines, labels, mw = load_everything()
+    local_dt, lat, lon, mag_limit, projection, opts, playing = sidebar()
+
+    utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+    dt_years = Time(utc_dt.replace(tzinfo=None)).jyear - 2016.0
+
+    scene = render.compute_scene(cat, utc_dt, lat, lon, dt_years, mag_limit)
+    fig = render.render_sky(cat, scene, projection=projection,
+                            lines=lines, labels=labels, milkyway=mw, **opts)
+
+    left, right = st.columns([3, 1], gap="medium")
+    with left:
+        st.plotly_chart(fig, width="stretch",
+                        config={"displayModeBar": False, "scrollZoom": False})
+    with right:
+        info_panel(scene, local_dt, cat)
+
+    if playing:
+        st.stop()  # keep the autorefresh loop tight
+
+
+def info_panel(scene, local_dt, cat):
+    twi = scene.twilight
+    st.subheader("Sky right now")
+    st.markdown(
+        f"<div style='padding:8px 12px;border-radius:8px;background:{twi.sky_color};"
+        f"color:#fff;border:1px solid #333;font-weight:600'>{twi.label} · "
+        f"Sun {scene.sun_alt:+.0f}°</div>", unsafe_allow_html=True)
+
+    st.metric("Stars visible", f"{scene.n_visible:,}")
+    st.caption(f"{local_dt.strftime('%A %d %b %Y · %H:%M %Z')}")
+    st.caption(f"Lat {scene.lat:.3f}, Lon {scene.lon:.3f} · LST {scene.lst:.2f}h")
+
+    up = [b for b in scene.bodies if b.up]
+    if up:
+        st.markdown("**Planets & Moon up**")
+        for b in up:
+            st.markdown(f"- {b.info} · alt {b.alt:.0f}°")
+
+    # What's up: brightest named visible stars
+    import numpy as np
+    vis = scene.visible
+    if vis.any():
+        idx = np.where(vis)[0]
+        order = idx[np.argsort(cat.mag[idx])][:12]
+        named = [(cat.name[i], cat.mag[i], scene.star_alt[i], scene.star_az[i])
+                 for i in order if cat.name[i]]
+        if named:
+            st.markdown("**Brightest stars up**")
+            for nm, m, al, az in named[:8]:
+                st.markdown(f"- {nm} · mag {m:.1f} · alt {al:.0f}°")
+
+    st.caption("Data: Gaia DR3 · HYG · d3-celestial")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,5 +1,7 @@
 # Web Framework
 streamlit>=1.31.0
+streamlit-js-eval>=0.1.7      # one-tap browser geolocation
+streamlit-autorefresh>=1.0.1  # time-lapse "Play" mode
 
 # Data Processing
 polars>=0.20.0
