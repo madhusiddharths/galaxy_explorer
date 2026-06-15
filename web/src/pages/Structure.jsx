@@ -20,6 +20,7 @@ function bpColor(bp) {
 export default function Structure() {
   const [minD, setMinD] = useState(0)
   const [maxD, setMaxD] = useState(2000)
+  const [minN, setMinN] = useState(0)
   const [mode, setMode] = useState('density')
   const [voxels, setVoxels] = useState([])
   const [hr, setHr] = useState([])
@@ -38,22 +39,23 @@ export default function Structure() {
     return () => clearTimeout(t)
   }, [minD, maxD])
 
-  const { positions, colors, sizes, totalStars } = useMemo(() => {
-    const n = voxels.length
+  const { positions, colors, sizes, totalStars, filteredCount } = useMemo(() => {
+    const filteredVoxels = voxels.filter(v => v.n >= minN)
+    const n = filteredVoxels.length
     const positions = new Float32Array(n * 3)
     const colors = new Float32Array(n * 3)
     const sizes = new Float32Array(n)
     let total = 0
     const maxLog = Math.log1p(Math.max(1, ...voxels.map((v) => v.n)))
-    voxels.forEach((v, i) => {
+    filteredVoxels.forEach((v, i) => {
       positions[i * 3] = v.x; positions[i * 3 + 1] = v.y; positions[i * 3 + 2] = v.z
       const c = mode === 'density' ? heat(Math.log1p(v.n) / maxLog) : bpColor(v.bp_rp ?? 1)
       colors[i * 3] = c[0]; colors[i * 3 + 1] = c[1]; colors[i * 3 + 2] = c[2]
       sizes[i] = 3.5 + 22 * Math.sqrt(v.n) / Math.sqrt(Math.exp(maxLog))
       total += v.n
     })
-    return { positions, colors, sizes, totalStars: total }
-  }, [voxels, mode])
+    return { positions, colors, sizes, totalStars: total, filteredCount: n }
+  }, [voxels, mode, minN])
 
   const cam = Math.max(400, maxD * 0.9)
 
@@ -76,6 +78,9 @@ export default function Structure() {
         <label>Max distance: {maxD} ly</label>
         <input type="range" min={200} max={17000} step={100} value={maxD}
                onChange={(e) => setMaxD(Math.max(+e.target.value, minD + 100))} />
+        <label>Min stars/cluster: {minN.toLocaleString()}</label>
+        <input type="range" min={0} max={30000} step={50} value={minN}
+               onChange={(e) => setMinN(+e.target.value)} />
         <label>Colour by</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setMode('density')}
@@ -86,7 +91,10 @@ export default function Structure() {
       </div>
 
       <div className="panel card readout">
-        <div className="row"><span className="muted">Voxels</span><span>{voxels.length.toLocaleString()}</span></div>
+        <div className="row">
+          <span className="muted">Voxels</span>
+          <span>{filteredCount.toLocaleString()} <span className="muted" style={{fontSize: '0.8em'}}>({voxels.length.toLocaleString()})</span></span>
+        </div>
         <div className="row"><span className="muted">Stars</span><span>{totalStars.toLocaleString()}</span></div>
         <div className="row muted" style={{ marginTop: 6, fontSize: '0.72rem' }}>teal dot = Sun</div>
       </div>

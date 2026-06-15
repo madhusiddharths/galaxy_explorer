@@ -42,4 +42,4 @@
 .clist .item:hover { background: rgba(255,255,255,0.05); }
 .clist .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
 
-canvas.hr { display: block; border-radius: 8px; }
+canvas.hr { display: block; border-radius: 8px; max-width: 100%; height: auto; }
