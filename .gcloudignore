@@ -1,0 +1,40 @@
+# Controls what `gcloud run deploy --source` uploads to Cloud Build.
+# Keep it tiny: the Cloud Run image only builds from web/ (source) + api/.
+.git
+.gitignore
+
+# Node (installed fresh inside the image)
+**/node_modules
+**/dist
+
+# Python caches / local virtualenv
+**/__pycache__
+**/*.py[cod]
+.venv/
+.Python
+
+# Local env / secrets
+**/.env
+
+# IDE / OS / agent cruft
+.idea/
+.claude/
+**/.DS_Store
+
+# Large data + docs not needed to build the image
+*.parquet
+*.csv
+*.dat
+*.pdf
+stars/
+pyspark_code/
+bq_jobs/
+*.ipynb
+
+# Streamlit-only code (Cloud Run image needs only api/ + web/)
+app.py
+universe.py
+skyview/
+backend/
+scripts/
+SETUP.md

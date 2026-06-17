@@ -1,0 +1,35 @@
+# Never copy host-built deps/artifacts into the image — they're rebuilt inside
+# the container (host node_modules are macOS binaries and break `vite build`).
+**/node_modules
+**/dist
+api/static
+
+# Python caches / local virtualenv
+**/__pycache__
+**/*.py[cod]
+.venv
+
+# Local env / secrets (config comes from Cloud Run env vars at runtime)
+**/.env
+
+# VCS / IDE / OS cruft
+.git
+.gitignore
+.idea
+.claude
+**/.DS_Store
+
+# Large data + docs the Cloud Run image never uses (it only needs api/ + web/)
+*.parquet
+*.csv
+*.dat
+*.pdf
+stars/
+pyspark_code/
+bq_jobs/
+backend/
+skyview/
+scripts/
+app.py
+universe.py
+*.ipynb
